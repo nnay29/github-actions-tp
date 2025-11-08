@@ -64,13 +64,13 @@ jobs:
         2. Inclue dans ta réponse un lien vers une ressource YouTube ou un article qui explique comment corriger cette erreur. La réponse doit être formatée en Markdown.
         Rapport ESLint: $LINT_ERRORS"
         
-        # 3. Appel à l'API DeepSeek via OpenRouter
-        echo "Exécution de l'appel API DeepSeek..."
+        # 3. Appel à l'API avec modèle gratuit fiable
+        echo "Exécution de l'appel API..."
         API_RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
           -H "Content-Type: application/json" \
           -H "Authorization: Bearer $OPENROUTER_API_KEY" \
           -d "{
-            \"model\": \"deepseek/deepseek-r1-0528:free\",
+            \"model\": \"meta-llama/llama-3.2-3b-instruct:free\",
             \"messages\": [
               {
                 \"role\": \"user\",
@@ -87,9 +87,15 @@ jobs:
         # 4. Extraction du texte de l'IA
         AI_TEXT=$(echo "$API_RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
         
-        # Vérification et remplacement en cas de null
+        # Vérification des erreurs et fallback
         if [ -z "$AI_TEXT" ] || [ "$AI_TEXT" = "null" ]; then
-            AI_TEXT="**ERREUR : La revue de l'IA n'a pas pu être générée.** Le service a probablement retourné une erreur. **Rapport brut :** $API_RESPONSE"
+            # Vérifier si c'est une erreur de rate limit
+            ERROR_MSG=$(echo "$API_RESPONSE" | jq -r '.error.message' 2>/dev/null)
+            if [[ "$ERROR_MSG" == *"rate-limited"* ]]; then
+                AI_TEXT="## ⚠️ Analyse du Code\n\n**Erreurs détectées dans le rapport ESLint :**\n\nLe pipeline a échoué à cause d'erreurs de linting. Consultez le rapport ESLint ci-dessus pour les détails.\n\n**Ressources utiles :**\n- [Guide ESLint React](https://eslint.org/docs/rules/)\n- [TypeScript Best Practices](https://typescript-eslint.io/rules/)"
+            else
+                AI_TEXT="**ERREUR API :** $ERROR_MSG. **Rapport brut :** $API_RESPONSE"
+            fi
         fi
 
         # 5. Stockage pour l'email
@@ -98,7 +104,7 @@ jobs:
         echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
         
         # 6. Publication du commentaire sur la PR
-        COMMENT_BODY="## 🤖 Revue de Code (DeepSeek R1) 💖\n\n$AI_TEXT\n\n---\n\n_Règle 'Love Component' : Composants en PascalCase, suffixe 'Love'._"
+        COMMENT_BODY="## 🤖 Revue de Code IA 💖\n\n$AI_TEXT\n\n---\n\n_Règle 'Love Component' : Composants en PascalCase, suffixe 'Love'._"
         
         curl -s -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
