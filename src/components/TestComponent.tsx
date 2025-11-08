@@ -1,14 +1,14 @@
 import React from 'react'
 
 
-export default function TestComponent() {
+export default function TestComponentd() {
     
-    const unusedBad;
+    const unusedBaddd;
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const unusedOkay;
+    const unusedOkaffy;
 
-    const nom:string = 14;
+    const nomd:string = 14;
 
   return (
     <div>TestComponent</div>
