@@ -36,19 +36,26 @@ jobs:
       
     # --- Étape 2: Rétroaction IA Dynamique ---
 # --- Étape 2: Rétroaction IA Dynamique (Correction Finale du Débogage) ---
+# --- Étape 2: Rétroaction IA Dynamique (Correction Finale du Débogage) ---
     - name: 🤖 Post Dynamic AI Feedback on Failure
       id: ai_review_step
       if: github.event_name == 'pull_request' && (success() || failure())
       
       env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         OWNER: ${{ github.repository_owner }}
         REPO: ${{ github.event.repository.name }}
         
       run: |
-        # 1. Vérification du rapport
-        # ... (code identique) ...
+        # 1. Vérification du rapport d'erreurs
+        if [ ! -s eslint_report.json ]; then
+          echo "ESLint report file is vide ou n'existe pas. Aucune erreur trouvée."
+          echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
+          echo "Aucune erreur de Linting trouvée. ✅" >> $GITHUB_OUTPUT
+          echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
+          exit 0
+        fi
 
         # 2. Préparation du prompt pour l'IA
         LINT_ERRORS=$(cat eslint_report.json)
@@ -56,48 +63,56 @@ jobs:
         PROMPT="Tu es un relecteur de code expert en React et TypeScript. Le pipeline CI/CD vient d'échouer. Analyse ce rapport ESLint en JSON. 
         1. Fournis une critique concise, en français, en soulignant la cause principale de l'échec.
         2. Inclue dans ta réponse un lien vers une ressource YouTube ou un article qui explique comment corriger cette erreur. La réponse doit être formatée en Markdown.
-        Rapport ESLint:\n$LINT_ERRORS"
+        Rapport ESLint: $LINT_ERRORS"
         
-        # Échappement pour JSON
-        ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs '{"text":.} | .text' | tr -d '\n' | sed 's/"/\\"/g' )
-        
-        # 3. Appel à l'API Gemini (AVEC DÉBOGAGE)
+        # 3. Appel à l'API avec modèle gratuit fiable
         echo "Exécution de l'appel API..."
-        API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
+        API_RESPONSE=$(curl -s -X POST "https://openrouter.ai/api/v1/chat/completions" \
           -H "Content-Type: application/json" \
-          -H "x-goog-api-key: $GEMINI_API_KEY" \
-          -d '{
-            "contents": [
+          -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+          -d "{
+            \"model\": \"meta-llama/llama-3.2-3b-instruct:free\",
+            \"messages\": [
               {
-                "parts": [
-                  {
-                    "text": "'"$ESCAPED_PROMPT"'"
-                  }
-                ]
+                \"role\": \"user\",
+                \"content\": $(echo "$PROMPT" | jq -Rs .)
               }
             ]
-          }')
+          }")
           
-        # 🚨 AJOUT DE LA LIGNE DE DÉBOGAGE CRUCIALE
-        echo "Réponse API brute reçue (Vérifiez les erreurs 400 ou 500) :"
+        echo "Réponse API brute reçue :"
         echo "--------------------------------------------------------"
         echo "$API_RESPONSE"
         echo "--------------------------------------------------------"
           
-        # 4. Extraction du texte de l'IA (Utilisation d'une variable de secours si l'extraction échoue)
-        GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null)
+        # 4. Extraction du texte de l'IA
+        AI_TEXT=$(echo "$API_RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
         
-        # 🚨 VÉRIFICATION ET REMPLACEMENT EN CAS DE NULL
-        if [ -z "$GEMINI_TEXT" ]; then
-            GEMINI_TEXT="**ERREUR : La revue de l'IA n'a pas pu être générée.** Le service a probablement retourné une erreur (vérifiez les logs ci-dessus) ou le chemin d'extraction JSON a échoué. **Veuillez vérifier que la clé API Gemini est valide.**\n\n**Rapport brut (JSON) :**\n$API_RESPONSE"
+        # Vérification des erreurs et fallback
+        if [ -z "$AI_TEXT" ] || [ "$AI_TEXT" = "null" ]; then
+            # Vérifier si c'est une erreur de rate limit
+            ERROR_MSG=$(echo "$API_RESPONSE" | jq -r '.error.message' 2>/dev/null)
+            if [[ "$ERROR_MSG" == *"rate-limited"* ]]; then
+                AI_TEXT="## ⚠️ Analyse du Code\n\n**Erreurs détectées dans le rapport ESLint :**\n\nLe pipeline a échoué à cause d'erreurs de linting. Consultez le rapport ESLint ci-dessus pour les détails.\n\n**Ressources utiles :**\n- [Guide ESLint React](https://eslint.org/docs/rules/)\n- [TypeScript Best Practices](https://typescript-eslint.io/rules/)"
+            else
+                AI_TEXT="**ERREUR API :** $ERROR_MSG. **Rapport brut :** $API_RESPONSE"
+            fi
         fi
 
-        # 5. Stockage et publication du commentaire (le reste est identique)
+        # 5. Stockage pour l'email
         echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
-        echo "$GEMINI_TEXT" >> $GITHUB_OUTPUT
+        echo "$AI_TEXT" >> $GITHUB_OUTPUT
         echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
         
-        # ... (le reste du code pour le commentaire GitHub reste identique) ...     
+        # 6. Publication du commentaire sur la PR
+        COMMENT_BODY="## 🤖 Revue de Code IA 💖\n\n$AI_TEXT\n\n---\n\n_Règle 'Love Component' : Composants en PascalCase, suffixe 'Love'._"
+        
+        curl -s -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"body\": $(echo "$COMMENT_BODY" | jq -Rs .)
+          }"     
     # --- Étape 3: NOTIFICATION EMAIL EN CAS D'ÉCHEC ---
     - name: 📧 Send Failure Email Notification à l'équipe et l'auteur
       # Se déclenche si Build ou Type Check échoue
@@ -118,7 +133,7 @@ jobs:
           
           ---
           
-          ## 🤖 Revue de l'Assistant IA (Gemini)
+          ## 🤖 Revue de l'Assistant IA (DeepSeek R1)
           
           ${{ steps.ai_review_step.outputs.ai_review }}
           
