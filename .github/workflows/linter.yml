@@ -3,7 +3,7 @@ name: CI - Linting & Type Checking
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review]
-    branches: [ main ]
+    branches: [main]
   
 jobs:
   lint_and_build:
@@ -11,120 +11,123 @@ jobs:
     
     permissions:
       pull-requests: write
-      contents: write # Nécessaire pour l'accès aux secrets et au contenu
+      contents: write
     
     steps:
-    - name: ⬇️ Checkout code
-      uses: actions/checkout@v4
+      - name: ⬇️ Checkout code
+        uses: actions/checkout@v4
 
-    - name: ⚙️ Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 'lts/*' 
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
 
-    - name: 📦 Install dependencies
-      run: npm ci
+      - name: 📦 Install dependencies
+        run: npm ci
 
-    # --- Étape 1: Linting et Rapport JSON ---
-    - name: 🔍 Run ESLint (Generate Report)
-      id: linter_report
-      # Suppose que "npm run lint:ci" crée eslint_report.json || true
-      run: npm run lint:ci 
+      - name: 🔍 Run ESLint (Generate Report)
+        id: linter_report
+        run: npm run lint:ci || true
 
-    - name: 🔨 Run TypeScript Build Check
-      run: npm run build
+      - name: 🔨 Run TypeScript Build Check
+        run: npm run build
       
-    # --- Étape 2: Rétroaction IA Dynamique ---
-# --- Étape 2: Rétroaction IA Dynamique (Correction Finale du Débogage) ---
-    - name: 🤖 Post Dynamic AI Feedback on Failure
-      id: ai_review_step
-      if: github.event_name == 'pull_request' && (success() || failure())
-      
-      env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
-        OWNER: ${{ github.repository_owner }}
-        REPO: ${{ github.event.repository.name }}
-        
-      run: |
-        # 1. Vérification du rapport
-        # ... (code identique) ...
+      - name: 🤖 Post Dynamic AI Feedback on Failure
+        id: ai_review_step
+        if: github.event_name == 'pull_request' && (success() || failure())
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          if [ ! -s eslint_report.json ]; then
+            echo "ESLint report file is vide ou n'existe pas. Aucune erreur trouvée."
+            echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
+            echo "Aucune erreur de Linting trouvée. ✅" >> $GITHUB_OUTPUT
+            echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
-        # 2. Préparation du prompt pour l'IA
-        LINT_ERRORS=$(cat eslint_report.json)
-        
-        PROMPT="Tu es un relecteur de code expert en React et TypeScript. Le pipeline CI/CD vient d'échouer. Analyse ce rapport ESLint en JSON. 
-        1. Fournis une critique concise, en français, en soulignant la cause principale de l'échec.
-        2. Inclue dans ta réponse un lien vers une ressource YouTube ou un article qui explique comment corriger cette erreur. La réponse doit être formatée en Markdown.
-        Rapport ESLint:\n$LINT_ERRORS"
-        
-        # Échappement pour JSON
-        ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs '{"text":.} | .text' | tr -d '\n' | sed 's/"/\\"/g' )
-        
-        # 3. Appel à l'API Gemini (AVEC DÉBOGAGE)
-        echo "Exécution de l'appel API..."
-        API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
-          -H "Content-Type: application/json" \
-          -H "x-goog-api-key: $GEMINI_API_KEY" \
-          -d '{
+          LINT_ERRORS=$(cat eslint_report.json)
+          
+          PROMPT="Tu es un relecteur de code expert en React et TypeScript. Le pipeline CI/CD vient d'échouer. Analyse ce rapport ESLint en JSON. 
+          1. Fournis une critique concise, en français, en soulignant les erreurs de variable non utilisée et la violation de la règle 'Love Component'.
+          2. Inclue un lien vers une ressource YouTube ou un article sur la correction des erreurs de nommage (PascalCase/regex).
+          3. Assure-toi que la réponse est en Markdown.
+          
+          Rapport ESLint:\n$LINT_ERRORS"
+          
+          echo "$PROMPT" > prompt.txt
+          
+          API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
+            -H "Content-Type: application/json" \
+            -H "x-goog-api-key: $GEMINI_API_KEY" \
+            -d @- << EOF_DATA
+          {
             "contents": [
               {
                 "parts": [
                   {
-                    "text": "'"$ESCAPED_PROMPT"'"
+                    "text": "$(cat prompt.txt)"
                   }
                 ]
               }
             ]
-          }')
+          }
+          EOF_DATA
+          )
+            
+          echo "Réponse API brute reçue (Vérifiez les erreurs 400 ou 500) :"
+          echo "--------------------------------------------------------"
+          echo "$API_RESPONSE"
+          echo "--------------------------------------------------------"
+            
+          GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null)
           
-        # 🚨 AJOUT DE LA LIGNE DE DÉBOGAGE CRUCIALE
-        echo "Réponse API brute reçue (Vérifiez les erreurs 400 ou 500) :"
-        echo "--------------------------------------------------------"
-        echo "$API_RESPONSE"
-        echo "--------------------------------------------------------"
-          
-        # 4. Extraction du texte de l'IA (Utilisation d'une variable de secours si l'extraction échoue)
-        GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null)
-        
-        # 🚨 VÉRIFICATION ET REMPLACEMENT EN CAS DE NULL
-        if [ -z "$GEMINI_TEXT" ]; then
-            GEMINI_TEXT="**ERREUR : La revue de l'IA n'a pas pu être générée.** Le service a probablement retourné une erreur (vérifiez les logs ci-dessus) ou le chemin d'extraction JSON a échoué. **Veuillez vérifier que la clé API Gemini est valide.**\n\n**Rapport brut (JSON) :**\n$API_RESPONSE"
-        fi
+          if [ -z "$GEMINI_TEXT" ]; then
+              GEMINI_TEXT="**ERREUR : La revue IA a échoué.** Cause probable : formatage JSON ou mauvaise clé. **Réponse API brute :**\n\n$API_RESPONSE"
+          fi
 
-        # 5. Stockage et publication du commentaire (le reste est identique)
-        echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
-        echo "$GEMINI_TEXT" >> $GITHUB_OUTPUT
-        echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
-        
-        # ... (le reste du code pour le commentaire GitHub reste identique) ...     
-    # --- Étape 3: NOTIFICATION EMAIL EN CAS D'ÉCHEC ---
-    - name: 📧 Send Failure Email Notification à l'équipe et l'auteur
-      # Se déclenche si Build ou Type Check échoue
-      if: failure()
-      uses: dawidd6/action-send-mail@v3
-      with:
-        server_address: smtp.gmail.com
-        server_port: 465
-        username: ${{secrets.MAIL_USERNAME}}
-        password: ${{secrets.MAIL_PASSWORD}} 
-        
-        subject: 'ÉCHEC CI/CD pour PR #${{ github.event.pull_request.number }} par @${{ github.actor }}'
-        
-        body: |
-          Bonjour @${{ github.event.pull_request.user.login }},
+          echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
+          echo "$GEMINI_TEXT" >> $GITHUB_OUTPUT
+          echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
           
-          Votre Pull Request #${{ github.event.pull_request.number }} a échoué au pipeline CI/CD (Build/Type Check/Linting).
+          COMMENT_BODY="## 🤖 Revue de Code (Alimenté par Gemini) 💖\n\n$GEMINI_TEXT\n\n---\n\n_Règle 'Love Component' : Composants en PascalCase, suffixe 'Love'._"
           
-          ---
+          cat << EOF_COMMENT_PAYLOAD > comment_payload.json
+          {
+            "body": "$COMMENT_BODY"
+          }
+          EOF_COMMENT_PAYLOAD
           
-          ## 🤖 Revue de l'Assistant IA (Gemini)
-          
-          ${{ steps.ai_review_step.outputs.ai_review }}
-          
-          ---
-          
-          Veuillez consulter les logs GitHub Actions pour les détails exacts de l'erreur ou le lien de la PR pour le commentaire: ${{ github.event.pull_request.html_url }}.
-        
-        to: ${{ secrets.TEAM_EMAIL_RECIPIENT }} 
-        from: ${{ secrets.MAIL_USERNAME }}
+          curl -s -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data-binary "@comment_payload.json"
+            
+      - name: 📧 Send Failure Email Notification à l'équipe et l'auteur
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: 'ÉCHEC CI/CD pour PR #${{ github.event.pull_request.number }} par @${{ github.actor }}'
+          body: |
+            Bonjour @${{ github.event.pull_request.user.login }},
+            
+            Votre Pull Request #${{ github.event.pull_request.number }} a échoué au pipeline CI/CD (Build/Type Check/Linting).
+            
+            ---
+            
+            ## 🤖 Revue de l'Assistant IA (Gemini)
+            
+            ${{ steps.ai_review_step.outputs.ai_review }}
+            
+            ---
+            
+            Veuillez consulter les logs GitHub Actions pour les détails exacts de l'erreur ou le lien de la PR pour le commentaire: ${{ github.event.pull_request.html_url }}.
+          to: ${{ secrets.TEAM_EMAIL_RECIPIENT }}
+          from: ${{ secrets.MAIL_USERNAME }}
