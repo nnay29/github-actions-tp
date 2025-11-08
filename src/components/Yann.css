@@ -1,0 +1,151 @@
+/* General Page Styling (replaces body) */
+.yann-body {
+    font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
+    background-color: #3ce1aa;
+    padding: 2rem; /* p-8 */
+    display: flex;
+    justify-content: center; /* justify-center */
+    align-items: center; /* items-center */
+    min-height: 100vh; /* min-h-screen */
+    margin: 0;
+}
+
+/* Profile Card Styling (replaces div with bg-blue-100, etc.) */
+.profile-card {
+    background-color: #ebf8ff; /* bg-blue-100 */
+    border-radius: 0.5rem; /* rounded-lg */
+    padding: 2.5rem; /* p-10 */
+    max-width: 400px; /* max-w-sm adjusted slightly for better fit */
+    width: 100%; /* Make it responsive */
+    /* Replaces w-[700px] but keeps max-width */
+    
+    /* Hover/Transition effects */
+    transition: transform 0.3s ease-in-out; /* transition duration-300 */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Optional subtle shadow */
+}
+
+.profile-card:hover {
+    transform: scale(1.02); /* transform hover:scale-[1.02] */
+}
+
+/* Header */
+.header {
+    text-align: center; /* text-center */
+    margin-bottom: 1.5rem; /* mb-6 */
+}
+
+/* Picture Placeholder */
+.picture-placeholder {
+    margin: 0 auto; /* mx-auto */
+    width: 8rem; /* w-32 */
+    height: 8rem; /* h-32 */
+    background-color: #e5e7eb; /* bg-gray-200 */
+    border-radius: 9999px; /* rounded-full */
+    border: 4px solid #6366f1; /* border-4 border-indigo-500 */
+    overflow: hidden;
+    margin-bottom: 1rem; /* mb-4 */
+}
+
+.profile-image {
+    width: 100%; /* w-full */
+    height: 100%; /* h-full */
+    object-fit: cover; /* object-cover */
+}
+
+.name-heading {
+    font-size: 1.875rem; /* text-3xl */
+    font-weight: 700; /* font-bold */
+    color: #4f46e5; /* text-indigo-700 */
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+}
+
+.alias-text {
+    font-size: 1rem; /* text-md */
+    color: #6b7280; /* text-gray-500 */
+    margin-top: 0;
+}
+
+/* Section */
+.section {
+    margin-bottom: 1.5rem; /* mb-6 (on first section) or default spacing */
+}
+
+.section-heading {
+    font-size: 1.25rem; /* text-xl */
+    font-weight: 600; /* font-semibold */
+    margin-bottom: 0.5rem; /* mb-2 or mb-3 */
+    color: #4f46e5; /* text-indigo-600 */
+    border-bottom: 1px solid #e5e7eb; /* border-b */
+    padding-bottom: 0.25rem; /* pb-1 */
+}
+
+.bio-text {
+    color: #374151; /* text-gray-700 */
+    line-height: 1.625; /* leading-relaxed */
+    font-style: italic; /* italic */
+}
+
+/* Emphasis Spans */
+.emphasis-text {
+    font-weight: 700; /* font-bold */
+}
+
+.emphasis-text.black {
+    color: #000; /* text-black */
+}
+
+.emphasis-text.orange {
+    color: #ea580c; /* text-orange-700 */
+}
+
+/* Favorites Section */
+.favorites-container {
+    display: flex;
+    justify-content: space-between; /* justify-between */
+    gap: 1rem; /* space-x-4 replacement */
+}
+
+.favorite-item {
+    width: 50%; /* w-1/2 */
+    padding: 0.75rem; /* p-3 */
+    background-color: #f9fafb; /* bg-gray-50 */
+    border-radius: 0.375rem; /* rounded-md */
+    border: 1px solid #e5e7eb; /* border border-gray-200 */
+}
+
+.favorite-title {
+    font-weight: 500; /* font-medium */
+    font-size: 1.125rem; /* text-lg */
+    margin-bottom: 0.5rem; /* mb-2 */
+    text-align: center; /* text-center */
+}
+
+.image-placeholder-small {
+    width: 100%; /* w-full */
+    height: 6rem; /* h-24 */
+    border-radius: 0.5rem; /* rounded-lg */
+    overflow: hidden;
+    margin-bottom: 0.5rem; /* mb-2 */
+}
+
+.meal-bg {
+    background-color: #fee2e2; /* bg-red-100 */
+}
+
+.album-bg {
+    background-color: #dbeafe; /* bg-blue-100 */
+}
+
+.favorite-image {
+    width: 100%; /* w-full */
+    height: 100%; /* h-full */
+    object-fit: cover; /* object-cover */
+}
+
+.favorite-caption {
+    font-size: 0.875rem; /* text-sm */
+    text-align: center; /* text-center */
+    font-weight: 700; /* font-bold */
+    color: #1f2937; /* text-gray-800 */
+}
