@@ -35,22 +35,40 @@ module.exports = {
       }
     ],
 
-    // 2. RÈGLE 'LOVE COMPONENT' (Fait échouer le workflow techniquement)
-    // Force les fonctions de composant dans les fichiers .tsx/.jsx à se terminer par 'Love'.
+    // 2. RÈGLE 'LOVE COMPONENT' (MODIFIÉE pour cibler les exportations par défaut)
     "@typescript-eslint/naming-convention": [
       "error",
+      
+      // Configuration 1 : Cible les fonctions exportées par DÉFAUT (export default function)
+      {
+        "selector": ["default function"], 
+        "format": ["PascalCase"],
+        "custom": {
+          "regex": "Love$", // Force le suffixe 'Love'
+          "match": true
+        },
+        "filter": {
+          "regex": "\\.(tsx|jsx)$",
+          "match": true
+        },
+        "message": "Le composant exporté par défaut doit être nommé en PascalCase et se terminer par 'Love'. 💖"
+      },
+      
+      // Configuration 2 : Cible les fonctions NOMMÉES (const MyComponentLove = ...)
       {
         "selector": "function",
         "format": ["PascalCase"],
         "custom": {
-          "regex": "Love$", // 👈 Le suffixe 'Love' est obligatoire
+          "regex": "Love$",
           "match": true
         },
+        // S'applique aux fonctions dans les fichiers composants, mais n'est pas nécessaire si la règle du dessus gère le default.
+        // Pour être plus sûr, on cible toutes les fonctions non "default" dans les fichiers .tsx/.jsx.
         "filter": {
-          "regex": "\\.(tsx|jsx)$", // 👈 S'applique uniquement aux composants
+          "regex": "^(?!.*default).*\\.(tsx|jsx)$", 
           "match": true
         },
-        "message": "Les composants fonctionnels doivent être nommés en PascalCase et se terminer par 'Love'. 💖"
+        "message": "Les composants fonctionnels nommés doivent se terminer par 'Love'. 💖"
       }
     ],
 
