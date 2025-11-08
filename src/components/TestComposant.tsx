@@ -1,10 +1,10 @@
 import React from 'react'
 
-export default function TestComposant() {
-    const unusedvar1;
+export default function Test1Composant() {
+    const unusedvar2;
 
-    const name:string = 153;
-    
+    const name2:string = 1534;
+
   return (
     <div>TestComposant doit echouer car ne se termine par 'Love'1</div>
   )

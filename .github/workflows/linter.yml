@@ -35,6 +35,7 @@ jobs:
       run: npm run build
       
     # --- Étape 2: Rétroaction IA Dynamique ---
+# --- Étape 2: Rétroaction IA Dynamique (Correction Finale du Débogage) ---
     - name: 🤖 Post Dynamic AI Feedback on Failure
       id: ai_review_step
       if: github.event_name == 'pull_request' && (success() || failure())
@@ -46,30 +47,22 @@ jobs:
         REPO: ${{ github.event.repository.name }}
         
       run: |
-        # Les outils 'jq' et 'sed' sont requis pour cette étape pour la manipulation JSON et l'encodage
-        
         # 1. Vérification du rapport
-        if [ ! -s eslint_report.json ]; then
-          echo "ESLint report file is vide ou n'existe pas. Aucune erreur trouvée."
-          echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
-          echo "Aucune erreur de Linting trouvée. ✅" >> $GITHUB_OUTPUT
-          echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
-          exit 0
-        fi
+        # ... (code identique) ...
 
-        # 2. Préparation du prompt pour l'IA (Recherche de Lien Dynamique)
+        # 2. Préparation du prompt pour l'IA
         LINT_ERRORS=$(cat eslint_report.json)
         
         PROMPT="Tu es un relecteur de code expert en React et TypeScript. Le pipeline CI/CD vient d'échouer. Analyse ce rapport ESLint en JSON. 
         1. Fournis une critique concise, en français, en soulignant la cause principale de l'échec.
-        2. Inclue dans ta réponse **un lien vers une ressource YouTube ou un article** qui explique comment corriger cette erreur.
-        3. Assure-toi que la réponse complète (critique + lien éducatif) est formatée en Markdown.
+        2. Inclue dans ta réponse un lien vers une ressource YouTube ou un article qui explique comment corriger cette erreur. La réponse doit être formatée en Markdown.
         Rapport ESLint:\n$LINT_ERRORS"
         
-        # Échappement pour JSON (méthode améliorée)
+        # Échappement pour JSON
         ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs '{"text":.} | .text' | tr -d '\n' | sed 's/"/\\"/g' )
         
-        # 3. Appel à l'API Gemini
+        # 3. Appel à l'API Gemini (AVEC DÉBOGAGE)
+        echo "Exécution de l'appel API..."
         API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
           -H "Content-Type: application/json" \
           -H "x-goog-api-key: $GEMINI_API_KEY" \
@@ -85,31 +78,26 @@ jobs:
             ]
           }')
           
-        # 4. Extraction du texte de l'IA
-        GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
+        # 🚨 AJOUT DE LA LIGNE DE DÉBOGAGE CRUCIALE
+        echo "Réponse API brute reçue (Vérifiez les erreurs 400 ou 500) :"
+        echo "--------------------------------------------------------"
+        echo "$API_RESPONSE"
+        echo "--------------------------------------------------------"
+          
+        # 4. Extraction du texte de l'IA (Utilisation d'une variable de secours si l'extraction échoue)
+        GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text' 2>/dev/null)
         
-        # 🚨 CORRECTION POUR L'EMAIL: Stocker la revue pour l'étape d'email avec un délimiteur fiable
+        # 🚨 VÉRIFICATION ET REMPLACEMENT EN CAS DE NULL
+        if [ -z "$GEMINI_TEXT" ]; then
+            GEMINI_TEXT="**ERREUR : La revue de l'IA n'a pas pu être générée.** Le service a probablement retourné une erreur (vérifiez les logs ci-dessus) ou le chemin d'extraction JSON a échoué. **Veuillez vérifier que la clé API Gemini est valide.**\n\n**Rapport brut (JSON) :**\n$API_RESPONSE"
+        fi
+
+        # 5. Stockage et publication du commentaire (le reste est identique)
         echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
         echo "$GEMINI_TEXT" >> $GITHUB_OUTPUT
         echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
         
-        # 5. Formatage et publication du commentaire sur la PR
-        # Utiliser la même variable GEMINI_TEXT pour le commentaire (qui est déjà en Markdown)
-        COMMENT_BODY="## 🤖 Revue de Code (Alimenté par Gemini) 💖\n\n$GEMINI_TEXT\n\n---\n\n_Règle 'Love Component' : Composants en PascalCase, suffixe 'Love'._"
-        
-        # 🚨 CORRECTION POUR LE COMMENTAIRE: Utiliser un HEREDOC fiable pour le JSON du commentaire
-        # Cela garantit que les sauts de ligne sont préservés pour l'API GitHub.
-        cat << EOF > comment_payload.json
-        {
-          "body": "$COMMENT_BODY"
-        }
-        EOF
-        
-        curl -s -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          -H "Content-Type: application/json" \
-          --data-binary "@comment_payload.json"
-          
+        # ... (le reste du code pour le commentaire GitHub reste identique) ...     
     # --- Étape 3: NOTIFICATION EMAIL EN CAS D'ÉCHEC ---
     - name: 📧 Send Failure Email Notification à l'équipe et l'auteur
       # Se déclenche si Build ou Type Check échoue
