@@ -39,12 +39,9 @@ jobs:
       
     # --- DYNAMIC AI FEEDBACK (ONLY ON LINTING FAILURE) ---
     - name: 🤖 Post Dynamic AI Feedback on Failure
-      # This step checks for the existence of the report file AND if it contains errors.
-      # A report file of size > 50 bytes (roughly non-empty JSON) suggests errors.
-      if: |
-        github.event_name == 'pull_request' && 
-        (success() || failure()) &&
-        (success() && contains(fromJson(steps.linter_report.outputs.report_status), 'error'))
+      #
+      
+      if: github.event_name == 'pull_request' && (success() || failure())
       
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -91,7 +88,7 @@ jobs:
         GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
         
         # 7. Format the final comment body.
-        COMMENT_BODY="## 🤖 Code Review Bot (Powered by Gemini) 💖\n\n$GEMINI_TEXT\n\n---\n\n_Rule check: All functional components must be named in **PascalCase** and end with the suffix **Love** (e.g., `HeaderLove`)._"
+        COMMENT_BODY="## 🤖 Code Review Bot (Powered avec Gemini) 💖\n\n$GEMINI_TEXT\n\n---\n\n_Rule check: All functional components must be named in **PascalCase** and end with the suffix **Love** (e.g., `HeaderLove`)._"
         
         # 8. Post the comment back to the Pull Request using the GitHub API (via curl).
         curl -s -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
