@@ -49,34 +49,26 @@ jobs:
             exit 0
           fi
 
-          LINT_ERRORS=$(cat eslint_report.json)
+          LINT_ERRORS=$(cat eslint_report.json | jq -c .)
           
-          PROMPT="Tu es un relecteur de code expert en React et TypeScript. Le pipeline CI/CD vient d'échouer. Analyse ce rapport ESLint en JSON. 
-          1. Fournis une critique concise, en français, en soulignant les erreurs de variable non utilisée et la violation de la règle 'Love Component'.
-          2. Inclue un lien vers une ressource YouTube ou un article sur la correction des erreurs de nommage (PascalCase/regex).
-          3. Assure-toi que la réponse est en Markdown.
-          
-          Rapport ESLint:\n$LINT_ERRORS"
-          
-          echo "$PROMPT" > prompt.txt
-          
-          API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
-            -H "Content-Type: application/json" \
-            -H "x-goog-api-key: $GEMINI_API_KEY" \
-            -d @- << EOF_DATA
+          # Create JSON payload with proper escaping
+          cat > request.json << EOF
           {
             "contents": [
               {
                 "parts": [
                   {
-                    "text": "$(cat prompt.txt)"
+                    "text": "Tu es un relecteur de code expert en React et TypeScript. Analyse ce rapport ESLint et fournis une critique concise en français. Inclue un lien vers une ressource éducative. Rapport: $LINT_ERRORS"
                   }
                 ]
               }
             ]
           }
-          EOF_DATA
-          )
+          EOF
+          
+          API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$GEMINI_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d @request.json)
             
           echo "Réponse API brute reçue (Vérifiez les erreurs 400 ou 500) :"
           echo "--------------------------------------------------------"
