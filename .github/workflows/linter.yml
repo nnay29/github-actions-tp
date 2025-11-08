@@ -1,0 +1,132 @@
+name: CI - Linting & Type Checking
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+    branches: [ main ]
+  
+jobs:
+  lint_and_build:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      pull-requests: write
+      contents: write # Nécessaire pour l'accès aux secrets et au contenu
+    
+    steps:
+    - name: ⬇️ Checkout code
+      uses: actions/checkout@v4
+
+    - name: ⚙️ Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 'lts/*' 
+
+    - name: 📦 Install dependencies
+      run: npm ci
+
+    # --- Étape 1: Linting et Rapport JSON ---
+    - name: 🔍 Run ESLint (Generate Report)
+      id: linter_report
+      # Suppose que "npm run lint:ci" crée eslint_report.json || true
+      run: npm run lint:ci 
+
+    - name: 🔨 Run TypeScript Build Check
+      run: npm run build
+      
+    # --- Étape 2: Rétroaction IA Dynamique ---
+    - name: 🤖 Post Dynamic AI Feedback on Failure
+      id: ai_review_step
+      if: github.event_name == 'pull_request' && (success() || failure())
+      
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        OWNER: ${{ github.repository_owner }}
+        REPO: ${{ github.event.repository.name }}
+        
+      run: |
+        # 1. Vérification du rapport d'erreurs
+        if [ ! -s eslint_report.json ]; then
+          echo "ESLint report file is vide ou n'existe pas. Aucune erreur trouvée."
+          echo "ai_review=Aucune erreur de Linting trouvée. ✅" >> $GITHUB_OUTPUT 
+          exit 0
+        fi
+
+        # 2. Préparation du prompt pour l'IA (Recherche de Lien Dynamique incluse)
+        LINT_ERRORS=$(cat eslint_report.json)
+        
+        PROMPT="Tu es un relecteur de code expert en React et TypeScript. Le pipeline CI/CD vient d'échouer. Analyse ce rapport ESLint en JSON. 
+        
+        1. Fournis une critique concise, en français, en soulignant la cause principale de l'échec (variable non utilisée, erreur de typage, ou violation de la convention de nommage 'Love$').
+        2. Inclue dans ta réponse **un lien vers une ressource YouTube ou un article** qui explique les **conventions de nommage de composants React avec des expressions régulières (regex)** ou qui traite de la règle ESLint **@typescript-eslint/no-unused-vars**. Le lien doit être directement pertinent à l'erreur détectée.
+        3. Assure-toi que la réponse complète (critique + lien éducatif) est formatée en Markdown.
+        
+        Rapport ESLint:\n$LINT_ERRORS"
+        
+        # Échappement pour JSON
+        ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs '{"text":.} | .text' | tr -d '\n' | sed 's/"/\\"/g' )
+        
+        # 3. Appel à l'API Gemini
+        API_RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
+          -H "Content-Type: application/json" \
+          -H "x-goog-api-key: $GEMINI_API_KEY" \
+          -d '{
+            "contents": [
+              {
+                "parts": [
+                  {
+                    "text": "'"$ESCAPED_PROMPT"'"
+                  }
+                ]
+              }
+            ]
+          }')
+          
+        # 4. Extraction et stockage du texte de l'IA (pour l'étape d'email)
+        GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
+        
+        echo "ai_review<<EOF" >> $GITHUB_OUTPUT
+        echo "$GEMINI_TEXT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+        # 5. Publication du commentaire sur la PR
+        COMMENT_BODY="## 🤖 Revue de Code (Alimenté par Gemini) 💖\n\n$GEMINI_TEXT\n\n---\n\n_Règle 'Love Component' : Composants en PascalCase, suffixe 'Love'._"
+        COMMENT_JSON=$(jq -n --arg body "$COMMENT_BODY" '{"body": $body}')
+        
+        curl -s -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Content-Type: application/json" \
+          -d "$COMMENT_JSON"
+
+          
+    # --- Étape 3: NOTIFICATION EMAIL EN CAS D'ÉCHEC ---
+    - name: 📧 Send Failure Email Notification à l'équipe et l'auteur
+      # Se déclenche si Build ou Type Check échoue
+      if: failure()
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 465
+        username: ${{secrets.MAIL_USERNAME}}
+        password: ${{secrets.MAIL_PASSWORD}} 
+        
+        subject: 'ÉCHEC CI/CD pour PR #${{ github.event.pull_request.number }} par @${{ github.actor }}'
+        
+        body: |
+          Bonjour @${{ github.event.pull_request.user.login }},
+          
+          Votre Pull Request #${{ github.event.pull_request.number }} a échoué au pipeline CI/CD (Build/Type Check/Linting).
+          
+          ---
+          
+          ## 🤖 Revue de l'Assistant IA (Gemini)
+          
+          ${{ steps.ai_review_step.outputs.ai_review }}
+          
+          ---
+          
+          Veuillez consulter les logs GitHub Actions pour les détails exacts de l'erreur ou le lien de la PR pour le commentaire: ${{ github.event.pull_request.html_url }}.
+        
+        to: ${{ secrets.TEAM_EMAIL_RECIPIENT }} 
+        from: ${{ secrets.MAIL_USERNAME }}
