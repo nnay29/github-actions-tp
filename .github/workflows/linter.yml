@@ -46,25 +46,27 @@ jobs:
         REPO: ${{ github.event.repository.name }}
         
       run: |
-        # 1. Vérification du rapport d'erreurs
+        # Les outils 'jq' et 'sed' sont requis pour cette étape pour la manipulation JSON et l'encodage
+        
+        # 1. Vérification du rapport
         if [ ! -s eslint_report.json ]; then
           echo "ESLint report file is vide ou n'existe pas. Aucune erreur trouvée."
-          echo "ai_review=Aucune erreur de Linting trouvée. ✅" >> $GITHUB_OUTPUT 
+          echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
+          echo "Aucune erreur de Linting trouvée. ✅" >> $GITHUB_OUTPUT
+          echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
           exit 0
         fi
 
-        # 2. Préparation du prompt pour l'IA (Recherche de Lien Dynamique incluse)
+        # 2. Préparation du prompt pour l'IA (Recherche de Lien Dynamique)
         LINT_ERRORS=$(cat eslint_report.json)
         
         PROMPT="Tu es un relecteur de code expert en React et TypeScript. Le pipeline CI/CD vient d'échouer. Analyse ce rapport ESLint en JSON. 
-        
-        1. Fournis une critique concise, en français, en soulignant la cause principale de l'échec (variable non utilisée, erreur de typage, ou violation de la convention de nommage 'Love$').
-        2. Inclue dans ta réponse **un lien vers une ressource YouTube ou un article** qui explique les **conventions de nommage de composants React avec des expressions régulières (regex)** ou qui traite de la règle ESLint **@typescript-eslint/no-unused-vars**. Le lien doit être directement pertinent à l'erreur détectée.
+        1. Fournis une critique concise, en français, en soulignant la cause principale de l'échec.
+        2. Inclue dans ta réponse **un lien vers une ressource YouTube ou un article** qui explique comment corriger cette erreur.
         3. Assure-toi que la réponse complète (critique + lien éducatif) est formatée en Markdown.
-        
         Rapport ESLint:\n$LINT_ERRORS"
         
-        # Échappement pour JSON
+        # Échappement pour JSON (méthode améliorée)
         ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs '{"text":.} | .text' | tr -d '\n' | sed 's/"/\\"/g' )
         
         # 3. Appel à l'API Gemini
@@ -83,22 +85,30 @@ jobs:
             ]
           }')
           
-        # 4. Extraction et stockage du texte de l'IA (pour l'étape d'email)
+        # 4. Extraction du texte de l'IA
         GEMINI_TEXT=$(echo "$API_RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
         
-        echo "ai_review<<EOF" >> $GITHUB_OUTPUT
+        # 🚨 CORRECTION POUR L'EMAIL: Stocker la revue pour l'étape d'email avec un délimiteur fiable
+        echo "ai_review<<EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
         echo "$GEMINI_TEXT" >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
+        echo "EOF_AI_REVIEW_OUTPUT" >> $GITHUB_OUTPUT
         
-        # 5. Publication du commentaire sur la PR
+        # 5. Formatage et publication du commentaire sur la PR
+        # Utiliser la même variable GEMINI_TEXT pour le commentaire (qui est déjà en Markdown)
         COMMENT_BODY="## 🤖 Revue de Code (Alimenté par Gemini) 💖\n\n$GEMINI_TEXT\n\n---\n\n_Règle 'Love Component' : Composants en PascalCase, suffixe 'Love'._"
-        COMMENT_JSON=$(jq -n --arg body "$COMMENT_BODY" '{"body": $body}')
+        
+        # 🚨 CORRECTION POUR LE COMMENTAIRE: Utiliser un HEREDOC fiable pour le JSON du commentaire
+        # Cela garantit que les sauts de ligne sont préservés pour l'API GitHub.
+        cat << EOF > comment_payload.json
+        {
+          "body": "$COMMENT_BODY"
+        }
+        EOF
         
         curl -s -X POST "https://api.github.com/repos/$OWNER/$REPO/issues/$PR_NUMBER/comments" \
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           -H "Content-Type: application/json" \
-          -d "$COMMENT_JSON"
-
+          --data-binary "@comment_payload.json"
           
     # --- Étape 3: NOTIFICATION EMAIL EN CAS D'ÉCHEC ---
     - name: 📧 Send Failure Email Notification à l'équipe et l'auteur
